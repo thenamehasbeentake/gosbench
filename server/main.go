@@ -88,6 +88,7 @@ func main() {
 	}
 	defer l.Close()
 	log.Info("Ready to accept connections")
+
 	go scheduleTests(config)
 	for {
 		// Wait for a connection.

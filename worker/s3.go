@@ -145,20 +145,52 @@ func putObject(service *s3.S3, objectName string, objectContent io.ReadSeeker, b
 // }
 
 func listObjects(service *s3.S3, prefix string, bucket string) (*s3.ListObjectsOutput, error) {
-	result, err := service.ListObjects(&s3.ListObjectsInput{
+	var (
+		isTruncated = true
+		marker      *string
+		result      *s3.ListObjectsOutput
+		contents    []*s3.Object
+		err         error
+	)
+	for isTruncated {
+		result, err = service.ListObjects(&s3.ListObjectsInput{
+			Bucket: &bucket,
+			Prefix: &prefix,
+			Marker: marker,
+		})
+		if err != nil {
+			// Cast err to awserr.Error to handle specific error codes.
+			aerr, ok := err.(awserr.Error)
+			if ok && aerr.Code() == s3.ErrCodeNoSuchKey {
+				log.WithError(aerr).Errorf("Could not find prefix %s in bucket %s when querying properties", prefix, bucket)
+			}
+			break
+		}
+		isTruncated = *result.IsTruncated
+		marker = result.NextMarker
+		contents = append(contents, result.Contents...)
+	}
+	if contents != nil {
+		result.Contents = contents
+	}
+	return result, err
+}
+
+func statObjects(service *s3.S3, objectName string, bucket string) (*s3.HeadObjectOutput, error) {
+	result, err := service.HeadObject(&s3.HeadObjectInput{
 		Bucket: &bucket,
-		Prefix: &prefix,
+		Key:    &objectName,
 	})
 	if err != nil {
 		// Cast err to awserr.Error to handle specific error codes.
 		aerr, ok := err.(awserr.Error)
 		if ok && aerr.Code() == s3.ErrCodeNoSuchKey {
-			log.WithError(aerr).Errorf("Could not find prefix %s in bucket %s when querying properties", prefix, bucket)
+			// log.WithError(aerr).Errorf("Could not find prefix %s in bucket %s when querying properties", objectName, bucket)
+			result = nil
 		}
 	}
 	return result, err
 }
-
 func getObject(service *s3.S3, objectName string, bucket string) error {
 	// Create a downloader with the session and custom options
 	downloader := s3manager.NewDownloaderWithClient(service)

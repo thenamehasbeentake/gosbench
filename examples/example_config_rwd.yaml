@@ -1,0 +1,117 @@
+---
+# ./server   -c ../examples/test_1works_seq.yaml
+# ./worker -t=t -s localhost:2000 -p 8888
+# ./worker -t=t -s localhost:2000 -p 8889
+s3_config:
+  - access_key: 5AQEOJUQR2GG5W8GTJBU
+    secret_key: n3yCinDwQwfpeMdShbk7ehTv76VIFRPfYOb5oCcH
+    region: us-east-1
+    endpoint: http://10.9.8.102:80
+    skipSSLverify: true
+  # - access_key: def
+  #   secret_key: as
+  #   region: eu-central-2
+  #   endpoint: https://my.rgw.endpoint:8080
+  #   skipSSLverify: false
+  # - access_key: ghi
+  #   secret_key: as
+  #   region: eu-central-3
+  #   endpoint: https://my.rgw.endpoint:8080
+  #   skipSSLverify: false
+
+# For generating annotations when we start/stop testcases
+# https://grafana.com/docs/http_api/annotations/#create-annotation
+grafana_config:
+  endpoint: http://grafana
+  username: admin
+  password: grafana
+
+tests:
+  - name: write-4k
+    # read_weight: 20
+    # existing_read_weight: 0
+    # write_weight: 80
+    # delete_weight: 0
+    # list_weight: 0
+    write_weight: 100
+    objects:
+      size_min: 4
+      size_max: 4
+      part_size: 0
+      # distribution: constant, random, sequential
+      size_distribution: constant
+      unit: MB
+      number_min: 1
+      number_max: 10
+      # distribution: constant, random, sequential
+      number_distribution: sequential
+    buckets:
+      number_min: 1
+      number_max: 1
+      # distribution: constant, random, sequential
+      number_distribution: constant
+    # Name prefix for buckets and objects
+    bucket_prefix: gosbench-prefix-
+    object_prefix: obj-
+    # End after a set amount of time
+    # Runtime in time.Duration - do not forget the unit please
+    # stop_with_runtime: 60s # Example with 60 seconds runtime
+    stop_with_runtime:
+    # End after a set amount of operations (per worker)
+    stop_with_ops: 10
+    # Number of s3 performance test servers to run in parallel
+    workers: 2
+    # Set wheter workers share the same buckets or not
+    # If set to True - bucket names will have the worker # appended
+    workers_share_buckets: True
+    # Number of requests processed in parallel by each worker
+    parallel_clients: 3
+    # Remove all generated buckets and its content after run
+    # clean_after: True
+    clean_after: False
+  - name: read-4k
+    existing_read_weight: 100
+    objects:
+      size_min: 4
+      size_max: 4
+      part_size: 0
+      size_distribution: constant
+      unit: MB
+      number_min: 1
+      number_max: 10
+      number_distribution: random
+    buckets:
+      number_min: 1
+      number_max: 1
+      number_distribution: constant
+    bucket_prefix: gosbench-prefix-
+    object_prefix: obj-
+    stop_with_ops: 5
+    workers: 2
+    workers_share_buckets: True
+    parallel_clients: 3
+    clean_after: False
+  - name: clean-4k
+    delete_weight: 100
+    objects:
+      size_min: 4
+      size_max: 4
+      part_size: 0
+      size_distribution: constant
+      unit: MB
+      number_min: 1
+      number_max: 10
+      number_distribution: sequential
+    buckets:
+      number_min: 1
+      number_max: 1
+      number_distribution: constant
+    bucket_prefix: gosbench-prefix-
+    object_prefix: obj-
+    stop_with_ops: 10
+    workers: 2
+    workers_share_buckets: True
+    parallel_clients: 3
+    clean_after: True
+
+...

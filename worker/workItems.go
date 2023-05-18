@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"math"
 	"math/rand"
-	"sort"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -73,10 +73,17 @@ type Workqueue struct {
 // GetNextOperation evaluates the operation values and returns which
 // operation should happen next
 func GetNextOperation(Queue *Workqueue) string {
-	sort.Slice(Queue.OperationValues, func(i, j int) bool {
-		return Queue.OperationValues[i].Value < Queue.OperationValues[j].Value
-	})
-	return Queue.OperationValues[0].Key
+	var (
+		key   string
+		value float64 = math.MaxFloat64
+	)
+	for _, kv := range Queue.OperationValues {
+		if kv.Value < value {
+			value = kv.Value
+			key = kv.Key
+		}
+	}
+	return key
 }
 
 func init() {
@@ -123,6 +130,12 @@ func (op ListOperation) Prepare() error {
 // Prepare prepares the execution of the DeleteOperation
 func (op DeleteOperation) Prepare() error {
 	log.WithField("bucket", op.Bucket).WithField("object", op.ObjectName).Debug("Preparing DeleteOperation")
+	// check whether object is exist or not
+	_, err := statObjects(housekeepingSvc, op.ObjectName, op.Bucket)
+	// object already exist
+	if err == nil {
+		return nil
+	}
 	return putObject(housekeepingSvc, op.ObjectName, bytes.NewReader(generateRandomBytes(op.ObjectSize)), op.Bucket)
 }
 

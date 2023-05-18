@@ -86,6 +86,8 @@ func connectToServer(serverAddress string) error {
 			InitS3(*config.S3Config)
 			fillWorkqueue(config.Test, Workqueue, config.WorkerID, config.Test.WorkerShareBuckets)
 
+			log.Infof("FillWorkqueue finished - len(Queue) = %d", len(*Workqueue.Queue))
+
 			for _, work := range *Workqueue.Queue {
 				err = work.Prepare()
 				if err != nil {
@@ -148,8 +150,12 @@ func PerfTest(testConfig *common.TestCaseConfiguration, Workqueue *Workqueue, wo
 				log.WithError(err).Error("Error during cleanup - ignoring")
 			}
 		}
-		for bucket := uint64(0); bucket < testConfig.Buckets.NumberMax; bucket++ {
-			err := deleteBucket(housekeepingSvc, fmt.Sprintf("%s%s%d", workerID, testConfig.BucketPrefix, bucket))
+		for bucket := testConfig.Buckets.NumberMin; bucket <= testConfig.Buckets.NumberMax; bucket++ {
+			wkId := workerID
+			if testConfig.WorkerShareBuckets {
+				wkId = ""
+			}
+			err := deleteBucket(housekeepingSvc, fmt.Sprintf("%s%s%d", wkId, testConfig.BucketPrefix, bucket))
 			if err != nil {
 				log.WithError(err).Error("Error during bucket deleting - ignoring")
 			}
@@ -192,6 +198,9 @@ func workUntilOps(Workqueue *Workqueue, workChannel chan WorkItem, maxOps uint64
 	currentOps := uint64(0)
 	for {
 		for _, work := range *Workqueue.Queue {
+			currentOps++
+			workChannel <- work
+
 			if currentOps >= maxOps {
 				log.Debug("Reached OpsDeadline ... waiting for workers to finish")
 				for worker := 0; worker < numberOfWorker; worker++ {
@@ -199,8 +208,6 @@ func workUntilOps(Workqueue *Workqueue, workChannel chan WorkItem, maxOps uint64
 				}
 				return
 			}
-			currentOps++
-			workChannel <- work
 		}
 		for _, work := range *Workqueue.Queue {
 			switch work.(type) {
@@ -234,8 +241,12 @@ func fillWorkqueue(testConfig *common.TestCaseConfiguration, Workqueue *Workqueu
 		Workqueue.OperationValues = append(Workqueue.OperationValues, KV{Key: "delete"})
 	}
 
-	bucketCount := common.EvaluateDistribution(testConfig.Buckets.NumberMin, testConfig.Buckets.NumberMax, &testConfig.Buckets.NumberLast, 1, testConfig.Buckets.NumberDistribution)
-	for bucket := uint64(0); bucket < bucketCount; bucket++ {
+	bucketmin := testConfig.Buckets.NumberMin
+	bucketmax := testConfig.Buckets.NumberMax
+	testConfig.Buckets.NumberLast = bucketmin - 1
+	for bucketn := bucketmin; bucketn <= bucketmax; bucketn++ {
+		bucket := common.EvaluateDistribution(testConfig.Buckets.NumberMin, testConfig.Buckets.NumberMax, &testConfig.Buckets.NumberLast, 1, testConfig.Buckets.NumberDistribution)
+
 		bucketName := fmt.Sprintf("%s%s%d", workerID, testConfig.BucketPrefix, bucket)
 		if shareBucketName {
 			bucketName = fmt.Sprintf("%s%d", testConfig.BucketPrefix, bucket)
@@ -254,8 +265,13 @@ func fillWorkqueue(testConfig *common.TestCaseConfiguration, Workqueue *Workqueu
 				log.WithError(err).Fatalf("Problems when listing contents of bucket %s", bucketName)
 			}
 		}
-		objectCount := common.EvaluateDistribution(testConfig.Objects.NumberMin, testConfig.Objects.NumberMax, &testConfig.Objects.NumberLast, 1, testConfig.Objects.NumberDistribution)
-		for object := uint64(0); object < objectCount; object++ {
+		objectmin := testConfig.Objects.NumberMin
+		objectmax := testConfig.Objects.NumberMax
+		testConfig.Objects.NumberLast = objectmin - 1
+		testConfig.Objects.SizeLast = testConfig.Objects.SizeMin - 1
+		for objectn := objectmin; objectn <= objectmax; objectn++ {
+			object := common.EvaluateDistribution(testConfig.Objects.NumberMin, testConfig.Objects.NumberMax, &testConfig.Objects.NumberLast, 1, testConfig.Objects.NumberDistribution)
+
 			objectSize := common.EvaluateDistribution(testConfig.Objects.SizeMin, testConfig.Objects.SizeMax, &testConfig.Objects.SizeLast, 1, testConfig.Objects.SizeDistribution)
 
 			nextOp := GetNextOperation(Workqueue)
